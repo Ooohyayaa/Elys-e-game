@@ -248,7 +248,24 @@ fxAudio.coin.volume=.19;
 fxAudio.death.volume=.34;
 fxAudio.bonus49.volume=.4;
 let lastCoinSound=0;
-function setupAudio(){/* HTML Audio avoids mobile decoding stalls */ }
+let audioCtx=null;
+let mobileClipsPrepared=false;
+function setupAudio(){
+ if(mobileClipsPrepared)return;
+ mobileClipsPrepared=true;
+ const shortClips=[...Object.values(fxAudio),...Object.values(heartVoices),
+   ...Object.values(selectionSounds),marineBonusSound,clipMelenchon];
+ for(const clip of shortClips){
+  if(!clip.src.startsWith('data:audio/'))continue;
+  try{
+   const b64=clip.src.slice(clip.src.indexOf(',')+1);
+   const binary=atob(b64),bytes=new Uint8Array(binary.length);
+   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+   clip.src=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));
+   clip.preload='auto';
+  }catch(e){console.warn('Audio preparation',e)}
+ }
+}
 function startCrowd(){
  const p=fxAudio.crowd.play();if(p)p.catch(()=>{});
 }
@@ -273,14 +290,13 @@ function playHeartVoice(){
  const restore=()=>{backgroundMusic.volume=.105;fxAudio.crowd.volume=.07;};
  clip.onended=restore;
  heartDuckTimer=setTimeout(restore,4500);
- clip.load();const p=clip.play();if(p)p.catch(e=>console.warn('heart voice',e));
+ const p=clip.play();if(p)p.catch(e=>console.warn('heart voice',e));
 }
 function playFx(name){
  const a=fxAudio[name];if(!a)return;
- if(name==='coin'){const now=performance.now();if(now-lastCoinSound<95)return;lastCoinSound=now;}
+ if(name==='coin'){const now=performance.now();if(now-lastCoinSound<105)return;lastCoinSound=now;}
  if(name==='bonus49')duckMusic();
- if(name==='coin'){tone(1050,.055,'sine',.016);return;}
- try{a.currentTime=0;const p=a.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
+ try{const sound=name==='coin'?a.cloneNode(true):a;sound.volume=a.volume;sound.currentTime=0;const p=sound.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
 }
 function playTrack(track){
   const other=track===backgroundMusic?menuMusic:backgroundMusic;
@@ -373,17 +389,18 @@ const selectionSounds={lepen:new Audio('data:audio/mpeg;base64,SUQzBAAAAAACPlRYW
 let selectionTimeout;
 for(const sound of Object.values(selectionSounds))sound.volume=.58;
 function playSelection(character){
+ setupAudio();
  clearTimeout(selectionTimeout);
  for(const sound of Object.values(selectionSounds)){sound.pause();sound.currentTime=0;}
  const a=selectionSounds[character];if(!a)return;
- menuMusic.volume=.035;
+ menuMusic.volume=.045;
  a.volume=.8;
  const p=a.play();if(p)p.catch(()=>{});
  const restore=()=>{menuMusic.volume=.21;};
  a.onended=restore;
- selectionTimeout=setTimeout(restore,3500);
+ selectionTimeout=setTimeout(restore,6000);
 }
-document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume()}catch(e){}playSelection(b.dataset.char);document.querySelectorAll('.char').forEach(x=>x.classList.remove('active'));b.classList.add('active');selected=b.dataset.char;makePlayer()});
+document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{playSelection(b.dataset.char);document.querySelectorAll('.char').forEach(x=>x.classList.remove('active'));b.classList.add('active');selected=b.dataset.char;makePlayer()});
 function begin(){for(const sound of Object.values(selectionSounds))sound.pause();clearTimeout(selectionTimeout);setupAudio();try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();}catch(e){}nickname=document.querySelector('#nickname').value.trim();if(nickname.length<3){document.querySelector('#nameError').textContent='Entre un pseudo de 3 caractères minimum.';document.querySelector('#menu').style.display='grid';return;}startMusic();localStorage.setItem('elysee_nickname',nickname);document.querySelector('#nameError').textContent='';document.querySelector('#menu').style.display='none';document.querySelector('#gameover').style.display='none';for(const o of obstacles)scene.remove(o);obstacles.length=0;for(const b of bonuses)scene.remove(b);bonuses.length=0;lives=2;immune=0;power=0;heartSpawn=27+Math.random()*20;heartsCollected=0;for(const h of hearts)scene.remove(h);hearts.length=0;coins=0;nextKm=1000;coinSpawn=.6;document.querySelector('#coinsCount').textContent=0;document.querySelector('#powerHud').textContent='';for(const c of collectibles)scene.remove(c);collectibles.length=0;paused=false;bonusSpawn=16+Math.random()*5;musicTimer=0;musicStep=0;bonusMusicStep=0;updateLives();document.querySelector('#pauseBtn').style.display='block';document.querySelector('#pauseMenu').style.display='none';score=0;runElapsed=0;hintShown=true;document.querySelector('#hint').classList.add('show');document.querySelector('#hint').classList.remove('fade');speed=15;spawn=1.15;playerLane=1;jumpY=0;vy=0;slideT=0;queuedSlide=false;runPhase=0;dead=false;running=true;sfx(660,.12);player.position.set(0,0,4);document.querySelector('#score').textContent='0';}
 document.querySelector('#start').onclick=begin;document.querySelector('#again').onclick=begin;
 document.querySelector('#mainMenu').onclick=()=>{backgroundMusic.pause();stopFx();startMenuMusic();running=false;dead=false;paused=false;clipMelenchon.pause();speechSynthesis.cancel();document.querySelector('#gameover').style.display='none';document.querySelector('#pauseMenu').style.display='none';document.querySelector('#pauseBtn').style.display='none';document.querySelector('#menu').style.display='grid';};
@@ -410,7 +427,7 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
   const stageEnd=Math.min(31,stageStart+3.3);
   const targetSpeed=stageStart+(stageEnd-stageStart)*Math.min(1,within/22);
   speed+=(targetSpeed-speed)*Math.min(1,dt*2.2);document.querySelector('#score').textContent=Math.floor(score);
-  spawn-=dt;if(spawn<=0){createObstacle();spawn=Math.max(.57,1.28-(speed-15)*.043)+Math.random()*.17}
+  spawn-=dt;if(spawn<=0){createObstacle();spawn=Math.max(.60,1.32-(speed-15)*.040)+Math.random()*.18}
   player.position.x+=(laneX[playerLane]-player.position.x)*Math.min(1,1-Math.exp(-34*dt));
   vy-= (queuedSlide?52:27)*dt;jumpY=Math.max(0,jumpY+vy*dt);if(jumpY===0){vy=0;if(queuedSlide){slideT=.95;queuedSlide=false}}player.position.y=jumpY;
   slideT=Math.max(0,slideT-dt);const sliding=slideT>0;

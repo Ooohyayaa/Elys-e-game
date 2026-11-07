@@ -248,24 +248,35 @@ fxAudio.coin.volume=.19;
 fxAudio.death.volume=.34;
 fxAudio.bonus49.volume=.4;
 let lastCoinSound=0;
-let audioCtx=null;
-let mobileClipsPrepared=false;
-function setupAudio(){
- if(mobileClipsPrepared)return;
- mobileClipsPrepared=true;
- const shortClips=[...Object.values(fxAudio),...Object.values(heartVoices),
-   ...Object.values(selectionSounds),marineBonusSound,clipMelenchon];
- for(const clip of shortClips){
-  if(!clip.src.startsWith('data:audio/'))continue;
-  try{
-   const b64=clip.src.slice(clip.src.indexOf(',')+1);
-   const binary=atob(b64),bytes=new Uint8Array(binary.length);
-   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-   clip.src=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));
-   clip.preload='auto';
-  }catch(e){console.warn('Audio preparation',e)}
- }
+let coinContext=null,coinBuffer=null,coinPending=null;
+function initCoinAudio(){
+ try{
+  coinContext??=new (window.AudioContext||window.webkitAudioContext)();
+  if(coinContext.state!=='running')coinContext.resume().catch(()=>{});
+  if(!coinPending){
+   const raw=atob(fxAudio.coin.src.split(',')[1]);
+   const bytes=new Uint8Array(raw.length);
+   for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+   coinPending=coinContext.decodeAudioData(bytes.buffer).then(b=>{coinBuffer=b;return b}).catch(e=>{console.warn('Coin decode failed',e);coinPending=null});
+  }
+ }catch(e){console.warn('Coin audio initialization',e)}
 }
+function playCoinAudio(){
+ initCoinAudio();
+ if(coinContext?.state==='running'&&coinBuffer){
+  try{
+   const source=coinContext.createBufferSource(),gain=coinContext.createGain();
+   source.buffer=coinBuffer;gain.gain.value=.32;
+   source.connect(gain).connect(coinContext.destination);
+   source.start();source.onended=()=>{source.disconnect();gain.disconnect()};
+   return;
+  }catch(e){console.warn('Coin WebAudio',e)}
+ }
+ // Native fallback: use the original audio element, not a clone.
+ try{fxAudio.coin.volume=.5;fxAudio.coin.currentTime=0;fxAudio.coin.play().catch(e=>console.warn('Coin HTML audio',e))}catch(e){console.warn(e)}
+}
+
+function setupAudio(){/* HTML Audio avoids mobile decoding stalls */ }
 function startCrowd(){
  const p=fxAudio.crowd.play();if(p)p.catch(()=>{});
 }
@@ -294,9 +305,9 @@ function playHeartVoice(){
 }
 function playFx(name){
  const a=fxAudio[name];if(!a)return;
- if(name==='coin'){const now=performance.now();if(now-lastCoinSound<105)return;lastCoinSound=now;}
+ if(name==='coin'){const now=performance.now();if(now-lastCoinSound<100)return;lastCoinSound=now;playCoinAudio();return;}
  if(name==='bonus49')duckMusic();
- try{const sound=name==='coin'?a.cloneNode(true):a;sound.volume=a.volume;sound.currentTime=0;const p=sound.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
+ try{a.currentTime=0;const p=a.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
 }
 function playTrack(track){
   const other=track===backgroundMusic?menuMusic:backgroundMusic;
@@ -308,7 +319,7 @@ function startMusic(){setupAudio();playTrack(backgroundMusic);startCrowd();}
 function startMenuMusic(){menuMusic.muted=false;menuMusic.volume=.21;fxAudio.crowd.pause();playTrack(menuMusic);}
 // Les navigateurs mobiles exigent un premier geste pour démarrer l'audio.
 for(const eventName of ['pointerdown','pointerup','keydown']){
- document.addEventListener(eventName,()=>{setupAudio();
+ document.addEventListener(eventName,()=>{setupAudio();initCoinAudio();
   if(document.querySelector('#menu').style.display!=='none' && menuMusic.paused && backgroundMusic.paused)startMenuMusic();
  },{passive:true});
 }
@@ -389,12 +400,10 @@ const selectionSounds={lepen:new Audio('data:audio/mpeg;base64,SUQzBAAAAAACPlRYW
 let selectionTimeout;
 for(const sound of Object.values(selectionSounds))sound.volume=.58;
 function playSelection(character){
- setupAudio();
  clearTimeout(selectionTimeout);
  for(const sound of Object.values(selectionSounds)){sound.pause();sound.currentTime=0;}
  const a=selectionSounds[character];if(!a)return;
- menuMusic.volume=.045;
- a.volume=.8;
+ menuMusic.volume=.10;
  const p=a.play();if(p)p.catch(()=>{});
  const restore=()=>{menuMusic.volume=.21;};
  a.onended=restore;
@@ -427,7 +436,7 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
   const stageEnd=Math.min(31,stageStart+3.3);
   const targetSpeed=stageStart+(stageEnd-stageStart)*Math.min(1,within/22);
   speed+=(targetSpeed-speed)*Math.min(1,dt*2.2);document.querySelector('#score').textContent=Math.floor(score);
-  spawn-=dt;if(spawn<=0){createObstacle();spawn=Math.max(.60,1.32-(speed-15)*.040)+Math.random()*.18}
+  spawn-=dt;if(spawn<=0){createObstacle();spawn=Math.max(.66,1.48-(speed-15)*.035)+Math.random()*.22}
   player.position.x+=(laneX[playerLane]-player.position.x)*Math.min(1,1-Math.exp(-34*dt));
   vy-= (queuedSlide?52:27)*dt;jumpY=Math.max(0,jumpY+vy*dt);if(jumpY===0){vy=0;if(queuedSlide){slideT=.95;queuedSlide=false}}player.position.y=jumpY;
   slideT=Math.max(0,slideT-dt);const sliding=slideT>0;
@@ -459,5 +468,7 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
 }
 animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWidth,innerHeight)});
 </script>
+<button id="testCoinAudio" style="position:fixed;bottom:12px;right:12px;z-index:9999;background:#233a56;color:white;border:1px solid #8fa2ba;border-radius:8px;padding:9px 12px;font-size:12px">🔊 Tester pièce</button>
+<script>document.getElementById('testCoinAudio').addEventListener('click',()=>{try{playCoinAudio()}catch(e){alert('Erreur son : '+e.message)}});</script>
 </body>
 </html>

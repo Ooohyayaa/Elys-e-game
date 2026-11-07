@@ -276,6 +276,13 @@ function playCoinAudio(){
  try{fxAudio.coin.volume=.5;fxAudio.coin.currentTime=0;fxAudio.coin.play().catch(e=>console.warn('Coin HTML audio',e))}catch(e){console.warn(e)}
 }
 
+document.addEventListener('test-game-coin',()=>{
+ initCoinAudio();
+ const status=document.getElementById('coinAudioStatus');
+ if(status)status.textContent='Pièce : '+(coinContext?.state||'non initialisé')+' / '+(coinBuffer?'décodé':'chargement');
+ playCoinAudio();
+ if(coinPending)coinPending.then(()=>{if(status)status.textContent='Pièce : '+coinContext?.state+' / '+(coinBuffer?'décodé':'échec décodage');if(coinBuffer)playCoinAudio()});
+});
 function setupAudio(){/* HTML Audio avoids mobile decoding stalls */ }
 function startCrowd(){
  const p=fxAudio.crowd.play();if(p)p.catch(()=>{});
@@ -469,6 +476,6 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
 animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWidth,innerHeight)});
 </script>
 <button id="testCoinAudio" style="position:fixed;bottom:12px;right:12px;z-index:9999;background:#233a56;color:white;border:1px solid #8fa2ba;border-radius:8px;padding:9px 12px;font-size:12px">🔊 Tester pièce</button>
-<script>document.getElementById('testCoinAudio').addEventListener('click',()=>{try{playCoinAudio()}catch(e){alert('Erreur son : '+e.message)}});</script>
-</body>
+<script>document.getElementById('testCoinAudio').addEventListener('click',()=>{document.dispatchEvent(new Event('test-game-coin'))});</script>
+<div id='coinAudioStatus' style='position:fixed;bottom:58px;right:12px;z-index:9999;color:white;background:#17243ddd;padding:4px 8px;font:11px sans-serif'>V36 · Test audio</div></body>
 </html>

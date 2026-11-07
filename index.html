@@ -248,47 +248,35 @@ fxAudio.coin.volume=.19;
 fxAudio.death.volume=.34;
 fxAudio.bonus49.volume=.4;
 let lastCoinSound=0;
-let coinContext=null,coinBuffer=null,coinPending=null,coinLastError='';
-function coinStatus(message){
- const el=document.getElementById('coinAudioStatus');
- if(el)el.textContent='V38 · '+message;
-}
+let coinPool=[],coinCursor=0,coinReady=false;
+function coinStatus(message){const el=document.getElementById('coinAudioStatus');if(el)el.textContent='V39 · '+message;}
 function initCoinAudio(){
+ if(coinReady)return;
  try{
-  if(!coinContext)coinContext=new (window.AudioContext||window.webkitAudioContext)();
-  if(coinContext.state==='suspended')coinContext.resume().catch(e=>{coinLastError=e.message;coinStatus('reprise bloquée')});
-  if(!coinPending && !coinBuffer){
-   const src=fxAudio.coin.src;
-   if(!src.startsWith('data:'))throw Error('Source pièce inattendue');
-   const binary=atob(src.substring(src.indexOf(',')+1));
+  const original=fxAudio.coin.src;
+  // A single Blob URL avoids repeatedly parsing a large embedded base64 string.
+  let url=original;
+  if(original.startsWith('data:')){
+   const binary=atob(original.slice(original.indexOf(',')+1));
    const bytes=new Uint8Array(binary.length);
    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-   coinPending=coinContext.decodeAudioData(bytes.buffer).then(b=>{
-    coinBuffer=b;coinStatus('pièces prêtes · '+coinContext.state);return b;
-   }).catch(e=>{coinLastError=e.message;coinStatus('décodage échoué : '+e.message);coinPending=null});
-   coinStatus('décodage en cours');
+   url=URL.createObjectURL(new Blob([bytes],{type:'audio/mpeg'}));
   }
- }catch(e){coinLastError=e.message;coinStatus('erreur : '+e.message);console.warn(e)}
+  coinPool=Array.from({length:3},()=>{
+   const audio=new Audio();audio.src=url;audio.preload='auto';audio.volume=.24;
+   audio.load();return audio;
+  });
+  coinReady=true;coinStatus('son chargé · lecteur HTML');
+ }catch(e){coinStatus('erreur : '+e.message);console.warn('coin audio',e)}
 }
 function playCoinAudio(){
- if(!coinContext || !coinBuffer || coinContext.state!=='running'){
-  // No synchronous fallback during gameplay; it was causing frame stalls.
-  return;
- }
- try{
-  const src=coinContext.createBufferSource(),gain=coinContext.createGain();
-  src.buffer=coinBuffer;gain.gain.value=.19;
-  src.connect(gain).connect(coinContext.destination);
-  src.onended=()=>{src.disconnect();gain.disconnect()};
-  src.start();
- }catch(e){coinStatus('lecture échouée : '+e.message)}
+ if(!coinReady)return;
+ const a=coinPool[coinCursor++%coinPool.length];
+ try{a.pause();a.currentTime=0;const p=a.play();if(p)p.catch(e=>coinStatus('lecture refusée : '+e.message))}
+ catch(e){coinStatus('lecture impossible : '+e.message)}
 }
-document.addEventListener('test-game-coin',()=>{
- initCoinAudio();
- if(coinBuffer)playCoinAudio();
- else if(coinPending)coinPending.then(()=>{if(coinBuffer)playCoinAudio()});
-});
-function setupAudio(){initCoinAudio();}
+document.addEventListener('test-game-coin',()=>{initCoinAudio();playCoinAudio()});
+function setupAudio(){initCoinAudio()}
 
 function startCrowd(){
  const p=fxAudio.crowd.play();if(p)p.catch(()=>{});
@@ -483,5 +471,5 @@ animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWid
 </script>
 <button id="testCoinAudio" style="position:fixed;bottom:12px;right:12px;z-index:9999;background:#233a56;color:white;border:1px solid #8fa2ba;border-radius:8px;padding:9px 12px;font-size:12px">🔊 Tester pièce</button>
 <script>document.getElementById('testCoinAudio').addEventListener('click',()=>{document.dispatchEvent(new Event('test-game-coin'))});</script>
-<div id='coinAudioStatus' style='position:fixed;bottom:58px;right:12px;z-index:9999;color:white;background:#17243ddd;padding:4px 8px;font:11px sans-serif'>V38 · Diagnostic pièces</div></body>
+<div id='coinAudioStatus' style='position:fixed;bottom:58px;right:12px;z-index:9999;color:white;background:#17243ddd;padding:4px 8px;font:11px sans-serif'>V39 · Audio HTML pièces</div></body>
 </html>

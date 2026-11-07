@@ -332,7 +332,6 @@ for(const eventName of ['pointerdown','keydown']){
   if(document.querySelector('#menu').style.display!=='none' && menuMusic.paused && backgroundMusic.paused)startMenuMusic();
  },{passive:true});
 }
-let audioCtx=null;
 function tone(freq=440,dur=.13,type='square',vol=.045){try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(vol,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur)}catch(e){}}
 function sfx(...args){}
 function voice(line){} // Pas de voix synthétique : uniquement les vrais extraits autorisés.

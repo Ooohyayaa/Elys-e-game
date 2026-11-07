@@ -328,7 +328,7 @@ function startMusic(){setupAudio();playTrack(backgroundMusic);startCrowd();}
 function startMenuMusic(){menuMusic.muted=false;menuMusic.volume=.21;fxAudio.crowd.pause();playTrack(menuMusic);}
 // Les navigateurs mobiles exigent un premier geste pour démarrer l'audio.
 for(const eventName of ['pointerdown','keydown']){
- document.addEventListener(eventName,()=>{setupAudio();
+ document.addEventListener(eventName,()=>{setupAudio();prepareGameAudio();
   if(document.querySelector('#menu').style.display!=='none' && menuMusic.paused && backgroundMusic.paused)startMenuMusic();
  },{passive:true});
 }
@@ -373,7 +373,7 @@ let audioPrimed=false;
 let decodeQueue=Promise.resolve();
 function prepareGameAudio(){
  try{
-  gameAudioContext??=new (window.AudioContext||window.webkitAudioContext)();
+  gameAudioContext??=audioCtx??new (window.AudioContext||window.webkitAudioContext)();audioCtx=gameAudioContext;
   if(gameAudioContext.state==='suspended')gameAudioContext.resume().catch(()=>{});
   if(audioPrimed)return;
   audioPrimed=true;
@@ -392,6 +392,7 @@ function prepareGameAudio(){
  }catch(e){console.warn('Web Audio',e)}
 }
 function playGameClip(name,volume=.35){
+ const d=document.getElementById('audioStatus');if(d)d.textContent='SON '+name+' · '+(gameAudioContext?.state||'sans moteur')+' · '+(decodedClips[name]?'prêt':'chargement');
  const element=gameClips[name];if(!element)return;
  const ctx=gameAudioContext;
  if(ctx&&decodedClips[name]&&ctx.state==='running'){
@@ -403,7 +404,11 @@ function playGameClip(name,volume=.35){
    source.start();return;
   }catch(e){console.warn('Effet WebAudio',e)}
  }
- // Fallback immédiat, sans attendre un décodage asynchrone.
+ // Attendre le décodage si l'effet n'est pas encore prêt.
+ if(decodingClips[name] && !decodedClips[name]){
+   decodingClips[name].then(()=>{if(decodedClips[name]&&gameAudioContext?.state==='running')playGameClip(name,volume)});
+   return;
+ }
  try{
   const audio=name==='coin'?element.cloneNode(true):element;
   audio.volume=volume;audio.currentTime=0;
@@ -533,5 +538,5 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
 }
 animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWidth,innerHeight)});
 </script>
-<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div></body>
+<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div><div id='audioStatus' style='position:fixed;bottom:3px;left:4px;z-index:9999;color:white;background:#132235aa;padding:3px 6px;border-radius:5px;font:10px sans-serif;pointer-events:none'>V30 · audio en attente</div></body>
 </html>

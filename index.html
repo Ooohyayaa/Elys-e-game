@@ -266,8 +266,9 @@ const heartVoices={macron:new Audio('data:audio/mpeg;base64,SUQzBAAAAAAAXlRYWFgA
 for(const clip of Object.values(heartVoices))clip.volume=.62;
 let heartDuckTimer=null;
 function playHeartVoice(){
- for(const clip of Object.values(heartVoices)){clip.pause();clip.currentTime=0;}
  const clip=heartVoices[selected];if(!clip)return;
+ // Ne repositionner que la réplique choisie, sans toucher aux autres lecteurs.
+ try{clip.pause();clip.currentTime=0;}catch(e){}
  backgroundMusic.volume=.045;fxAudio.crowd.volume=.025;
  clearTimeout(heartDuckTimer);
  const restore=()=>{backgroundMusic.volume=.105;fxAudio.crowd.volume=.07;};
@@ -275,23 +276,23 @@ function playHeartVoice(){
  heartDuckTimer=setTimeout(restore,4500);
  const p=clip.play();if(p)p.catch(e=>console.warn('heart voice',e));
 }
-// Lecteurs HTML Audio persistants : aucun décodage ou création pendant le ramassage.
+// Effets sonores sans seek ni allocation répétée pendant le jeu (Safari mobile).
 const coinPlayers=[fxAudio.coin,new Audio(fxAudio.coin.src)];
-coinPlayers.forEach(a=>{a.preload='auto';a.volume=fxAudio.coin.volume;});
+coinPlayers.forEach(a=>{a.preload='auto';a.volume=.19;});
 let coinPlayerIndex=0;
 function playFx(name){
  const a=fxAudio[name];if(!a)return;
  if(name==='coin'){
   const now=performance.now();
-  if(now-lastCoinSound<125)return;
+  if(now-lastCoinSound<190)return;
+  const player=coinPlayers.find(x=>x.paused||x.ended);
+  if(!player)return; // Ne jamais interrompre/repositionner un son en cours sur iOS.
   lastCoinSound=now;
-  const player=coinPlayers[coinPlayerIndex];
-  coinPlayerIndex=(coinPlayerIndex+1)%coinPlayers.length;
-  try{player.currentTime=0;const p=player.play();if(p)p.catch(()=>{});}catch(e){}
+  const p=player.play();if(p)p.catch(()=>{});
   return;
  }
  if(name==='bonus49')duckMusic();
- try{a.currentTime=0;const p=a.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
+ try{a.pause();a.currentTime=0;const p=a.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
 }
 function playTrack(track){
   const other=track===backgroundMusic?menuMusic:backgroundMusic;
@@ -299,7 +300,7 @@ function playTrack(track){
   const promise=track.play();
   if(promise)promise.catch(()=>{console.warn('Musique bloquée jusqu’à une interaction')});
 }
-function startMusic(){setupAudio();coinPlayers.forEach(a=>{try{a.load()}catch(e){}});playTrack(backgroundMusic);startCrowd();}
+function startMusic(){setupAudio();playTrack(backgroundMusic);startCrowd();}
 function startMenuMusic(){menuMusic.muted=false;menuMusic.volume=.21;fxAudio.crowd.pause();playTrack(menuMusic);}
 // Les navigateurs mobiles exigent un premier geste pour démarrer l'audio.
 for(const eventName of ['pointerdown','pointerup','keydown']){
@@ -344,7 +345,7 @@ function playBonusVoice(){
   marineBonusSound.restoreTimer=setTimeout(()=>{backgroundMusic.volume=.105;fxAudio.crowd.volume=.07},2800);
   return;
  }
-if(selected==='macron'){playFx('bonus49')}else if(selected==='melenchon'){clipMelenchon.volume=.75;clipMelenchon.currentTime=0;clipMelenchon.play().catch(()=>{});}}
+if(selected==='macron'){fxAudio.bonus49.volume=.75;playFx('bonus49')}else if(selected==='melenchon'){clipMelenchon.volume=.75;clipMelenchon.currentTime=0;clipMelenchon.play().catch(()=>{});}}
 function makeBonus(){
  const g=new THREE.Group();g.position.set(laneX[Math.floor(Math.random()*3)],1.35,-72);
  const tint=selected==='macron'?0x72b7ff:selected==='melenchon'?0xff665f:0xffd65c;
@@ -394,7 +395,7 @@ function playSelection(character){
  selectionTimeout=setTimeout(restore,6000);
 }
 document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{playSelection(b.dataset.char);document.querySelectorAll('.char').forEach(x=>x.classList.remove('active'));b.classList.add('active');selected=b.dataset.char;makePlayer()});
-function begin(){for(const sound of Object.values(selectionSounds))sound.pause();clearTimeout(selectionTimeout);setupAudio();try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();}catch(e){}nickname=document.querySelector('#nickname').value.trim();if(nickname.length<3){document.querySelector('#nameError').textContent='Entre un pseudo de 3 caractères minimum.';document.querySelector('#menu').style.display='grid';return;}startMusic();localStorage.setItem('elysee_nickname',nickname);document.querySelector('#nameError').textContent='';document.querySelector('#menu').style.display='none';document.querySelector('#gameover').style.display='none';for(const o of obstacles)scene.remove(o);obstacles.length=0;for(const b of bonuses)scene.remove(b);bonuses.length=0;lives=2;immune=0;power=0;heartSpawn=27+Math.random()*20;heartsCollected=0;for(const h of hearts)scene.remove(h);hearts.length=0;coins=0;nextKm=1000;coinSpawn=.6;document.querySelector('#coinsCount').textContent=0;document.querySelector('#powerHud').textContent='';for(const c of collectibles)scene.remove(c);collectibles.length=0;paused=false;bonusSpawn=16+Math.random()*5;musicTimer=0;musicStep=0;bonusMusicStep=0;updateLives();document.querySelector('#pauseBtn').style.display='block';document.querySelector('#pauseMenu').style.display='none';score=0;runElapsed=0;hintShown=true;document.querySelector('#hint').classList.add('show');document.querySelector('#hint').classList.remove('fade');speed=15;spawn=1.15;playerLane=1;jumpY=0;vy=0;slideT=0;queuedSlide=false;runPhase=0;dead=false;running=true;sfx(660,.12);player.position.set(0,0,4);document.querySelector('#score').textContent='0';}
+function begin(){for(const sound of Object.values(selectionSounds))sound.pause();clearTimeout(selectionTimeout);setupAudio();try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();}catch(e){}nickname=document.querySelector('#nickname').value.trim();if(nickname.length<3){document.querySelector('#nameError').textContent='Entre un pseudo de 3 caractères minimum.';document.querySelector('#menu').style.display='grid';return;}try{fxAudio.bonus49.load();heartVoices[selected]?.load();}catch(e){}startMusic();localStorage.setItem('elysee_nickname',nickname);document.querySelector('#nameError').textContent='';document.querySelector('#menu').style.display='none';document.querySelector('#gameover').style.display='none';for(const o of obstacles)scene.remove(o);obstacles.length=0;for(const b of bonuses)scene.remove(b);bonuses.length=0;lives=2;immune=0;power=0;heartSpawn=27+Math.random()*20;heartsCollected=0;for(const h of hearts)scene.remove(h);hearts.length=0;coins=0;nextKm=1000;coinSpawn=.6;document.querySelector('#coinsCount').textContent=0;document.querySelector('#powerHud').textContent='';for(const c of collectibles)scene.remove(c);collectibles.length=0;paused=false;bonusSpawn=16+Math.random()*5;musicTimer=0;musicStep=0;bonusMusicStep=0;updateLives();document.querySelector('#pauseBtn').style.display='block';document.querySelector('#pauseMenu').style.display='none';score=0;runElapsed=0;hintShown=true;document.querySelector('#hint').classList.add('show');document.querySelector('#hint').classList.remove('fade');speed=15;spawn=1.15;playerLane=1;jumpY=0;vy=0;slideT=0;queuedSlide=false;runPhase=0;dead=false;running=true;sfx(660,.12);player.position.set(0,0,4);document.querySelector('#score').textContent='0';}
 document.querySelector('#start').onclick=begin;document.querySelector('#again').onclick=begin;
 document.querySelector('#mainMenu').onclick=()=>{backgroundMusic.pause();stopFx();startMenuMusic();running=false;dead=false;paused=false;clipMelenchon.pause();speechSynthesis.cancel();document.querySelector('#gameover').style.display='none';document.querySelector('#pauseMenu').style.display='none';document.querySelector('#pauseBtn').style.display='none';document.querySelector('#menu').style.display='grid';};
 function end(){backgroundMusic.pause();stopFx();playFx('death');if(selected!=='melenchon')voice(['La partie est terminée !','La République est bloquée !','Quel désastre !'][Math.floor(Math.random()*3)]);document.querySelector('#pauseBtn').style.display='none';running=false;dead=true;best=Math.max(best,Math.floor(score));localStorage.setItem('lf_best',best);document.querySelector('#best').textContent=best;document.querySelector('#result').textContent=`${Math.floor(score)} mètres · ${coins} pièces · Record : ${best} m.`;const records=JSON.parse(localStorage.getItem('elysee_records')||'[]');const previous=records.find(r=>r.name===nickname);if(!previous||Math.floor(score)>previous.score){const filtered=records.filter(r=>r.name!==nickname);filtered.push({name:nickname,score:Math.floor(score)});filtered.sort((a,b)=>b.score-a.score);localStorage.setItem('elysee_records',JSON.stringify(filtered.slice(0,10)))}localLeaderboard();document.querySelector('#gameover').style.display='grid'}

@@ -248,41 +248,48 @@ fxAudio.coin.volume=.19;
 fxAudio.death.volume=.34;
 fxAudio.bonus49.volume=.4;
 let lastCoinSound=0;
-let coinContext=null,coinBuffer=null,coinPending=null;
+let coinContext=null,coinBuffer=null,coinPending=null,coinLastError='';
+function coinStatus(message){
+ const el=document.getElementById('coinAudioStatus');
+ if(el)el.textContent='V38 · '+message;
+}
 function initCoinAudio(){
  try{
-  coinContext??=new (window.AudioContext||window.webkitAudioContext)();
-  if(coinContext.state!=='running')coinContext.resume().catch(()=>{});
-  if(!coinPending){
-   const raw=atob(fxAudio.coin.src.split(',')[1]);
-   const bytes=new Uint8Array(raw.length);
-   for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
-   coinPending=coinContext.decodeAudioData(bytes.buffer).then(b=>{coinBuffer=b;return b}).catch(e=>{console.warn('Coin decode failed',e);coinPending=null});
+  if(!coinContext)coinContext=new (window.AudioContext||window.webkitAudioContext)();
+  if(coinContext.state==='suspended')coinContext.resume().catch(e=>{coinLastError=e.message;coinStatus('reprise bloquée')});
+  if(!coinPending && !coinBuffer){
+   const src=fxAudio.coin.src;
+   if(!src.startsWith('data:'))throw Error('Source pièce inattendue');
+   const binary=atob(src.substring(src.indexOf(',')+1));
+   const bytes=new Uint8Array(binary.length);
+   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+   coinPending=coinContext.decodeAudioData(bytes.buffer).then(b=>{
+    coinBuffer=b;coinStatus('pièces prêtes · '+coinContext.state);return b;
+   }).catch(e=>{coinLastError=e.message;coinStatus('décodage échoué : '+e.message);coinPending=null});
+   coinStatus('décodage en cours');
   }
- }catch(e){console.warn('Coin audio initialization',e)}
+ }catch(e){coinLastError=e.message;coinStatus('erreur : '+e.message);console.warn(e)}
 }
 function playCoinAudio(){
- if(!coinContext || !coinBuffer){return;}
- if(coinContext?.state==='running'&&coinBuffer){
-  try{
-   const source=coinContext.createBufferSource(),gain=coinContext.createGain();
-   source.buffer=coinBuffer;gain.gain.value=.32;
-   source.connect(gain).connect(coinContext.destination);
-   source.start();source.onended=()=>{source.disconnect();gain.disconnect()};
-   return;
-  }catch(e){console.warn('Coin WebAudio',e)}
+ if(!coinContext || !coinBuffer || coinContext.state!=='running'){
+  // No synchronous fallback during gameplay; it was causing frame stalls.
+  return;
  }
- // No synchronous HTMLAudio fallback: it caused stutter on rapid pickups.
+ try{
+  const src=coinContext.createBufferSource(),gain=coinContext.createGain();
+  src.buffer=coinBuffer;gain.gain.value=.19;
+  src.connect(gain).connect(coinContext.destination);
+  src.onended=()=>{src.disconnect();gain.disconnect()};
+  src.start();
+ }catch(e){coinStatus('lecture échouée : '+e.message)}
 }
-
 document.addEventListener('test-game-coin',()=>{
  initCoinAudio();
- const status=document.getElementById('coinAudioStatus');
- if(status)status.textContent='Pièce : '+(coinContext?.state||'non initialisé')+' / '+(coinBuffer?'décodé':'chargement');
- playCoinAudio();
- if(coinPending)coinPending.then(()=>{if(status)status.textContent='Pièce : '+coinContext?.state+' / '+(coinBuffer?'décodé':'échec décodage');if(coinBuffer)playCoinAudio()});
+ if(coinBuffer)playCoinAudio();
+ else if(coinPending)coinPending.then(()=>{if(coinBuffer)playCoinAudio()});
 });
 function setupAudio(){initCoinAudio();}
+
 function startCrowd(){
  const p=fxAudio.crowd.play();if(p)p.catch(()=>{});
 }
@@ -311,7 +318,7 @@ function playHeartVoice(){
 }
 function playFx(name){
  const a=fxAudio[name];if(!a)return;
- if(name==='coin'){const now=performance.now();if(now-lastCoinSound<135)return;lastCoinSound=now;playCoinAudio();return;}
+ if(name==='coin'){const now=performance.now();if(now-lastCoinSound<115)return;lastCoinSound=now;playCoinAudio();return;}
  if(name==='bonus49')duckMusic();
  try{a.currentTime=0;const p=a.play();if(p)p.catch(e=>console.warn('audio',name,e))}catch(e){console.warn(e)}
 }
@@ -476,5 +483,5 @@ animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWid
 </script>
 <button id="testCoinAudio" style="position:fixed;bottom:12px;right:12px;z-index:9999;background:#233a56;color:white;border:1px solid #8fa2ba;border-radius:8px;padding:9px 12px;font-size:12px">🔊 Tester pièce</button>
 <script>document.getElementById('testCoinAudio').addEventListener('click',()=>{document.dispatchEvent(new Event('test-game-coin'))});</script>
-<div id='coinAudioStatus' style='position:fixed;bottom:58px;right:12px;z-index:9999;color:white;background:#17243ddd;padding:4px 8px;font:11px sans-serif'>V37 · Pièces optimisées</div></body>
+<div id='coinAudioStatus' style='position:fixed;bottom:58px;right:12px;z-index:9999;color:white;background:#17243ddd;padding:4px 8px;font:11px sans-serif'>V38 · Diagnostic pièces</div></body>
 </html>

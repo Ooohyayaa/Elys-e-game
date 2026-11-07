@@ -328,10 +328,11 @@ function startMusic(){setupAudio();playTrack(backgroundMusic);startCrowd();}
 function startMenuMusic(){menuMusic.muted=false;menuMusic.volume=.21;fxAudio.crowd.pause();playTrack(menuMusic);}
 // Les navigateurs mobiles exigent un premier geste pour démarrer l'audio.
 for(const eventName of ['pointerdown','keydown']){
- document.addEventListener(eventName,()=>{setupAudio();prepareGameAudio();
+ document.addEventListener(eventName,()=>{setupAudio();
   if(document.querySelector('#menu').style.display!=='none' && menuMusic.paused && backgroundMusic.paused)startMenuMusic();
  },{passive:true});
 }
+let audioCtx=null;
 function tone(freq=440,dur=.13,type='square',vol=.045){try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(vol,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);o.connect(g).connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur)}catch(e){}}
 function sfx(...args){}
 function voice(line){} // Pas de voix synthétique : uniquement les vrais extraits autorisés.
@@ -363,7 +364,7 @@ const marineBonusSound=new Audio('data:audio/mpeg;base64,SUQzAwAAAAAAO1RYWFgAAAA
 
 // Moteur audio de jeu : effets décodés une seule fois et joués via Web Audio.
 // Cela évite les lectures HTMLAudio répétées, parfois bloquées sur iOS.
-let audioCtx=null; // Shared audio context; required on iOS (was undeclared in V30)
+// Audio context declared before all handlers
 const gameClips={...fxAudio,...heartVoices,marine:marineBonusSound,melenchonBonus:clipMelenchon};
 const decodedClips={};
 const decodingClips={};
@@ -480,7 +481,7 @@ function playSelection(character){
  a.onended=restore;
  selectionTimeout=setTimeout(restore,6000);
 }
-document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{playSelection(b.dataset.char);document.querySelectorAll('.char').forEach(x=>x.classList.remove('active'));b.classList.add('active');selected=b.dataset.char;makePlayer()});
+document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{selected=b.dataset.char;document.querySelectorAll('.char').forEach(x=>x.classList.remove('active'));b.classList.add('active');makePlayer();try{playSelection(selected)}catch(e){console.warn('Voix sélection',e)}}));
 function begin(){prepareGameAudio();for(const sound of Object.values(selectionSounds))sound.pause();clearTimeout(selectionTimeout);setupAudio();try{audioCtx??=new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();}catch(e){}nickname=document.querySelector('#nickname').value.trim();if(nickname.length<3){document.querySelector('#nameError').textContent='Entre un pseudo de 3 caractères minimum.';document.querySelector('#menu').style.display='grid';return;}startMusic();localStorage.setItem('elysee_nickname',nickname);document.querySelector('#nameError').textContent='';document.querySelector('#menu').style.display='none';document.querySelector('#gameover').style.display='none';for(const o of obstacles)scene.remove(o);obstacles.length=0;for(const b of bonuses)scene.remove(b);bonuses.length=0;lives=2;immune=0;power=0;heartSpawn=27+Math.random()*20;heartsCollected=0;for(const h of hearts)scene.remove(h);hearts.length=0;coins=0;nextKm=1000;coinSpawn=.6;document.querySelector('#coinsCount').textContent=0;document.querySelector('#powerHud').textContent='';for(const c of collectibles)scene.remove(c);collectibles.length=0;paused=false;bonusSpawn=16+Math.random()*5;musicTimer=0;musicStep=0;bonusMusicStep=0;updateLives();document.querySelector('#pauseBtn').style.display='block';document.querySelector('#pauseMenu').style.display='none';score=0;runElapsed=0;hintShown=true;document.querySelector('#hint').classList.add('show');document.querySelector('#hint').classList.remove('fade');speed=15;spawn=1.15;playerLane=1;jumpY=0;vy=0;slideT=0;queuedSlide=false;runPhase=0;dead=false;running=true;sfx(660,.12);player.position.set(0,0,4);document.querySelector('#score').textContent='0';}
 document.querySelector('#start').onclick=begin;document.querySelector('#again').onclick=begin;
 document.querySelector('#mainMenu').onclick=()=>{backgroundMusic.pause();stopFx();startMenuMusic();running=false;dead=false;paused=false;clipMelenchon.pause();speechSynthesis.cancel();document.querySelector('#gameover').style.display='none';document.querySelector('#pauseMenu').style.display='none';document.querySelector('#pauseBtn').style.display='none';document.querySelector('#menu').style.display='grid';};
@@ -539,5 +540,5 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
 }
 animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWidth,innerHeight)});
 </script>
-<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div><div id='audioStatus' style='position:fixed;bottom:3px;left:4px;z-index:9999;color:white;background:#132235aa;padding:3px 6px;border-radius:5px;font:10px sans-serif;pointer-events:none'>V31 · audio corrigé</div></body>
+<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div><div id='audioStatus' style='position:fixed;bottom:3px;left:4px;z-index:9999;color:white;background:#132235aa;padding:3px 6px;border-radius:5px;font:10px sans-serif;pointer-events:none'>V32 · menu sécurisé</div></body>
 </html>

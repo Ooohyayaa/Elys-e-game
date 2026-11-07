@@ -97,7 +97,7 @@ function adaptCamera(){
  camera.lookAt(0,1.05,0);camera.updateProjectionMatrix();
 }
 adaptCamera();
-const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<850?1.25:1.75));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;document.body.appendChild(renderer.domElement);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;document.body.appendChild(renderer.domElement);
 scene.add(new THREE.HemisphereLight(0xe7f2ff,0x56515a,2.0));const sun=new THREE.DirectionalLight(0xffe0b0,2.2);sun.position.set(-7,14,7);sun.castShadow=true;sun.shadow.mapSize.set(innerWidth<850?512:1024,innerWidth<850?512:1024);scene.add(sun);
 const mat=(c,r=.85)=>new THREE.MeshStandardMaterial({color:c,roughness:r});
 const asphalt=mat(0x343941),sidewalk=mat(0xb6a995),stone=mat(0xc9b9a5),roof=mat(0x424854),window=mat(0x344c60,.45),gold=mat(0xd6a34c),white=mat(0xe9e6dd),dark=mat(0x202631);
@@ -119,13 +119,50 @@ for(let side of [-1,1])for(let z=-8;z>-112;z-=20){
 }
 // Recognizable Paris details: Eiffel tower silhouette, Arc de Triomphe, street signs and graffiti
 const landmark=new THREE.Group();landmark.position.set(0,0,-99);scene.add(landmark);
-const iron=mat(0x5a504b);
-for(let y=0;y<16;y+=2){const w=5.8*(1-y/19);box(landmark,0,y+1,0,w,.18,.35,iron)}
-for(const x of [-1,1]){const leg=box(landmark,x*1.65,3,0,.32,6,.32,iron);leg.rotation.z=x*.23}
-box(landmark,0,16,0,.22,4,.22,iron);
+const iron=mat(0x5a504b),ironLight=mat(0x88796b),limestone=mat(0xd6c5aa);
+// Tour Eiffel: tapered four legs, diagonal lattice, platforms and antenna.
+function beam(parent,a,b,r,material){
+ const start=new THREE.Vector3(...a),finish=new THREE.Vector3(...b);
+ const dir=finish.clone().sub(start),mesh=new THREE.Mesh(new THREE.CylinderGeometry(r,r,dir.length(),6),material);
+ mesh.position.copy(start.add(finish).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());parent.add(mesh);return mesh;
+}
+for(const side of [-1,1])for(const depth of [-1,1]){
+ const pts=[[side*2.75,0,depth*1.6],[side*1.65,6,depth*.9],[side*.9,12,depth*.5],[side*.23,18,depth*.16]];
+ for(let i=0;i<3;i++)beam(landmark,pts[i],pts[i+1],.115,iron);
+ for(let i=0;i<3;i++){
+  const a=pts[i],b=pts[i+1];
+  for(let j=0;j<3;j++){
+   const t=j/3,u=(j+1)/3;
+   const pa=a.map((v,k)=>v+(b[k]-v)*t),pb=a.map((v,k)=>v+(b[k]-v)*u);
+   const opposite=[-pa[0],pa[1],pa[2]];
+   beam(landmark,pa,[-pb[0],pb[1],pb[2]],.027,ironLight);
+   beam(landmark,opposite,pb,.027,ironLight);
+  }
+ }
+}
+for(const [height,width,depth] of [[6,3.7,2.2],[12,2.1,1.3],[17,.8,.6]]){
+ box(landmark,0,height,0,width,.22,depth,iron);
+ for(let k=-width/2;k<=width/2;k+=.38)beam(landmark,[k,height-.35,-depth/2],[k,height+.2,depth/2],.025,ironLight);
+}
+beam(landmark,[0,18,0],[0,22,0],.085,iron);
+// Arc de Triomphe: masonry piers, cornices, sculpted reliefs and a curved vault.
 const arch=new THREE.Group();arch.position.set(0,0,-65);scene.add(arch);
-for(const x of [-2.4,2.4])box(arch,x,3,0,1.5,6,2.2,stone);
-box(arch,0,6.2,0,6.4,1.5,2.4,stone);box(arch,0,7.2,0,7,.35,2.6,white);
+for(const x of [-2.55,2.55]){
+ box(arch,x,3.55,0,1.45,7.1,2.55,stone);
+ box(arch,x,3.25,1.30,1.12,2.1,.10,limestone);
+ for(let y=1.1;y<6.5;y+=.7)box(arch,x,y,1.32,1.05,.035,.045,limestone);
+ for(const offset of [-.38,.38])box(arch,x+offset,4.5,1.35,.22,1.15,.08,ironLight);
+}
+// Semicircular arch in the upper opening, using masonry blocks.
+for(let i=0;i<=18;i++){
+ const angle=Math.PI*i/18;
+ const x=Math.cos(angle)*1.82,y=5.55+Math.sin(angle)*1.82;
+ const block=box(arch,x,y,0,.46,.45,2.5,stone);block.rotation.z=angle-Math.PI/2;
+}
+box(arch,0,7.95,0,7.15,1.15,2.8,stone);
+box(arch,0,8.65,0,7.55,.30,3.05,limestone);
+box(arch,0,8.97,0,7.25,.18,2.85,stone);
+for(let i=-3;i<=3;i++)box(arch,i*.88,8.0,1.45,.48,.44,.09,limestone);
 function textSprite(t,bg='#f3e9d9',fg='#273e66',w=420,h=100){
  const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');
  ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);ctx.fillStyle=fg;ctx.font='bold 45px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,w/2,h/2,w-20);
@@ -331,39 +368,50 @@ const decodedClips={};
 const decodingClips={};
 let gameAudioContext=null;
 const playingNodes=new Set();
+let audioGeneration=0;
 function prepareGameAudio(){
  try{
   gameAudioContext??=new (window.AudioContext||window.webkitAudioContext)();
-  if(gameAudioContext.state==='suspended')gameAudioContext.resume().catch(()=>{});
+  gameAudioContext.resume().catch(()=>{});
   for(const [name,element] of Object.entries(gameClips)){
    if(name==='crowd'||decodedClips[name]||decodingClips[name])continue;
-   decodingClips[name]=fetch(element.src).then(r=>r.arrayBuffer())
-    .then(buf=>gameAudioContext.decodeAudioData(buf))
-    .then(buf=>{decodedClips[name]=buf})
-    .catch(e=>console.warn('Décodage audio',name,e));
+   // Decode the embedded MP3 without a network request, including on Safari iOS.
+   const encoded=element.src.split(',')[1];if(!encoded)continue;
+   decodingClips[name]=Promise.resolve().then(()=>{
+    const binary=atob(encoded),data=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)data[i]=binary.charCodeAt(i);
+    return gameAudioContext.decodeAudioData(data.buffer);
+   }).then(buffer=>{decodedClips[name]=buffer;return buffer})
+     .catch(err=>{console.warn('Audio decode',name,err);return null});
   }
  }catch(e){console.warn('Web Audio',e)}
 }
 function playGameClip(name,volume=.35){
- if(gameAudioContext&&decodedClips[name]){
-  const src=gameAudioContext.createBufferSource();
-  const gain=gameAudioContext.createGain();
-  src.buffer=decodedClips[name];gain.gain.value=volume;
-  src.connect(gain).connect(gameAudioContext.destination);
-  playingNodes.add(src);
+ const generation=audioGeneration;prepareGameAudio();
+ const ctx=gameAudioContext;
+ function fire(buffer){
+  if(!ctx||!buffer||generation!==audioGeneration)return false;
+  const src=ctx.createBufferSource(),gain=ctx.createGain();
+  src.buffer=buffer;gain.gain.value=volume;
+  src.connect(gain).connect(ctx.destination);playingNodes.add(src);
   src.onended=()=>{playingNodes.delete(src);src.disconnect();gain.disconnect()};
-  try{src.start()}catch(e){console.warn(e)}
-  return;
+  try{src.start();return true}catch(e){console.warn(e);return false}
  }
- const element=gameClips[name];if(!element)return;
- try{
-  // Clone for overlapping coin effects; the original element is reused for voices.
-  const audio=name==='coin'?element.cloneNode(true):element;
-  audio.volume=volume;audio.currentTime=0;
-  const promise=audio.play();if(promise)promise.catch(()=>{});
- }catch(e){console.warn(e)}
+ if(ctx&&decodedClips[name]){ctx.resume().then(()=>fire(decodedClips[name])).catch(()=>{});return}
+ if(ctx&&decodingClips[name]){
+  // Do not lose a character voice while the sound is still being decoded.
+  decodingClips[name].then(buffer=>{if(buffer)ctx.resume().then(()=>fire(buffer)).catch(()=>{});else fallback()});return;
+ }
+ fallback();
+ function fallback(){
+  const element=gameClips[name];if(!element)return;
+  try{const audio=name==='coin'?element.cloneNode(true):element;
+   audio.volume=volume;audio.currentTime=0;audio.play().catch(()=>{});
+  }catch(e){console.warn(e)}
+ }
 }
 function stopGameClips(){
+ audioGeneration++;
  for(const node of playingNodes){try{node.stop()}catch(e){}}
  playingNodes.clear();
  for(const a of Object.values(gameClips))if(a!==fxAudio.crowd)a.pause();

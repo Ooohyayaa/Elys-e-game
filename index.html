@@ -363,6 +363,7 @@ const marineBonusSound=new Audio('data:audio/mpeg;base64,SUQzAwAAAAAAO1RYWFgAAAA
 
 // Moteur audio de jeu : effets décodés une seule fois et joués via Web Audio.
 // Cela évite les lectures HTMLAudio répétées, parfois bloquées sur iOS.
+let audioCtx=null; // Shared audio context; required on iOS (was undeclared in V30)
 const gameClips={...fxAudio,...heartVoices,marine:marineBonusSound,melenchonBonus:clipMelenchon};
 const decodedClips={};
 const decodingClips={};
@@ -389,10 +390,10 @@ function prepareGameAudio(){
     decodedClips[name]=buffer;return buffer;
    }).catch(err=>{console.warn('Décodage',name,err);return null});
   }
- }catch(e){console.warn('Web Audio',e)}
+ }catch(e){console.warn('Web Audio',e);const d=document.getElementById('audioStatus');if(d)d.textContent='ERREUR AUDIO: '+e.message}
 }
 function playGameClip(name,volume=.35){
- const d=document.getElementById('audioStatus');if(d)d.textContent='SON '+name+' · '+(gameAudioContext?.state||'sans moteur')+' · '+(decodedClips[name]?'prêt':'chargement');
+ const d=document.getElementById('audioStatus');if(d)d.textContent='V31 SON '+name+' · '+(gameAudioContext?.state||'sans moteur')+' · '+(decodedClips[name]?'prêt':'chargement');
  const element=gameClips[name];if(!element)return;
  const ctx=gameAudioContext;
  if(ctx&&decodedClips[name]&&ctx.state==='running'){
@@ -538,5 +539,5 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
 }
 animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWidth,innerHeight)});
 </script>
-<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div><div id='audioStatus' style='position:fixed;bottom:3px;left:4px;z-index:9999;color:white;background:#132235aa;padding:3px 6px;border-radius:5px;font:10px sans-serif;pointer-events:none'>V30 · audio en attente</div></body>
+<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div><div id='audioStatus' style='position:fixed;bottom:3px;left:4px;z-index:9999;color:white;background:#132235aa;padding:3px 6px;border-radius:5px;font:10px sans-serif;pointer-events:none'>V31 · audio corrigé</div></body>
 </html>

@@ -327,8 +327,8 @@ function playTrack(track){
 function startMusic(){setupAudio();playTrack(backgroundMusic);startCrowd();}
 function startMenuMusic(){menuMusic.muted=false;menuMusic.volume=.21;fxAudio.crowd.pause();playTrack(menuMusic);}
 // Les navigateurs mobiles exigent un premier geste pour démarrer l'audio.
-for(const eventName of ['pointerdown','pointerup','keydown']){
- document.addEventListener(eventName,()=>{setupAudio();prepareGameAudio();
+for(const eventName of ['pointerdown','keydown']){
+ document.addEventListener(eventName,()=>{setupAudio();
   if(document.querySelector('#menu').style.display!=='none' && menuMusic.paused && backgroundMusic.paused)startMenuMusic();
  },{passive:true});
 }
@@ -369,46 +369,46 @@ const decodingClips={};
 let gameAudioContext=null;
 const playingNodes=new Set();
 let audioGeneration=0;
+let audioPrimed=false;
+let decodeQueue=Promise.resolve();
 function prepareGameAudio(){
  try{
   gameAudioContext??=new (window.AudioContext||window.webkitAudioContext)();
-  gameAudioContext.resume().catch(()=>{});
-  for(const [name,element] of Object.entries(gameClips)){
-   if(name==='crowd'||decodedClips[name]||decodingClips[name])continue;
-   // Decode the embedded MP3 without a network request, including on Safari iOS.
-   const encoded=element.src.split(',')[1];if(!encoded)continue;
-   decodingClips[name]=Promise.resolve().then(()=>{
+  if(gameAudioContext.state==='suspended')gameAudioContext.resume().catch(()=>{});
+  if(audioPrimed)return;
+  audioPrimed=true;
+  // Décodage séquentiel : évite le pic mémoire Safari iOS.
+  const priority=['coin','death','bonus49','macron','melenchon','lepen','marine','melenchonBonus'];
+  for(const name of priority){
+   const element=gameClips[name];if(!element)continue;
+   decodingClips[name]=decodeQueue=decodeQueue.then(async()=>{
+    const encoded=element.src.split(',')[1];if(!encoded)return null;
     const binary=atob(encoded),data=new Uint8Array(binary.length);
     for(let i=0;i<binary.length;i++)data[i]=binary.charCodeAt(i);
-    return gameAudioContext.decodeAudioData(data.buffer);
-   }).then(buffer=>{decodedClips[name]=buffer;return buffer})
-     .catch(err=>{console.warn('Audio decode',name,err);return null});
+    const buffer=await gameAudioContext.decodeAudioData(data.buffer);
+    decodedClips[name]=buffer;return buffer;
+   }).catch(err=>{console.warn('Décodage',name,err);return null});
   }
  }catch(e){console.warn('Web Audio',e)}
 }
 function playGameClip(name,volume=.35){
- const generation=audioGeneration;prepareGameAudio();
+ const element=gameClips[name];if(!element)return;
  const ctx=gameAudioContext;
- function fire(buffer){
-  if(!ctx||!buffer||generation!==audioGeneration)return false;
-  const src=ctx.createBufferSource(),gain=ctx.createGain();
-  src.buffer=buffer;gain.gain.value=volume;
-  src.connect(gain).connect(ctx.destination);playingNodes.add(src);
-  src.onended=()=>{playingNodes.delete(src);src.disconnect();gain.disconnect()};
-  try{src.start();return true}catch(e){console.warn(e);return false}
+ if(ctx&&decodedClips[name]&&ctx.state==='running'){
+  try{
+   const source=ctx.createBufferSource(),gain=ctx.createGain();
+   source.buffer=decodedClips[name];gain.gain.value=volume;
+   source.connect(gain).connect(ctx.destination);playingNodes.add(source);
+   source.onended=()=>{playingNodes.delete(source);source.disconnect();gain.disconnect()};
+   source.start();return;
+  }catch(e){console.warn('Effet WebAudio',e)}
  }
- if(ctx&&decodedClips[name]){ctx.resume().then(()=>fire(decodedClips[name])).catch(()=>{});return}
- if(ctx&&decodingClips[name]){
-  // Do not lose a character voice while the sound is still being decoded.
-  decodingClips[name].then(buffer=>{if(buffer)ctx.resume().then(()=>fire(buffer)).catch(()=>{});else fallback()});return;
- }
- fallback();
- function fallback(){
-  const element=gameClips[name];if(!element)return;
-  try{const audio=name==='coin'?element.cloneNode(true):element;
-   audio.volume=volume;audio.currentTime=0;audio.play().catch(()=>{});
-  }catch(e){console.warn(e)}
- }
+ // Fallback immédiat, sans attendre un décodage asynchrone.
+ try{
+  const audio=name==='coin'?element.cloneNode(true):element;
+  audio.volume=volume;audio.currentTime=0;
+  const p=audio.play();if(p)p.catch(e=>console.warn('Lecture Safari',name,e));
+ }catch(e){console.warn('Lecture audio',name,e)}
 }
 function stopGameClips(){
  audioGeneration++;
@@ -533,5 +533,5 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
 }
 animate();addEventListener('resize',()=>{adaptCamera();renderer.setSize(innerWidth,innerHeight)});
 </script>
-</body>
+<div style='position:fixed;bottom:3px;left:6px;z-index:1000;color:#fff8;font:10px Arial;pointer-events:none'>V29 · Audio Safari</div></body>
 </html>

@@ -252,7 +252,7 @@ function setupAudio(){/* HTML Audio avoids mobile decoding stalls */ }
 function startCrowd(){
  const p=fxAudio.crowd.play();if(p)p.catch(()=>{});
 }
-function stopFx(){clearTimeout(voiceMixTimer);voiceMixToken++;for(const a of coinPlayers)a.pause();for(const clip of Object.values(heartVoices))clip.pause();marineBonusSound.pause();
+function stopFx(){if(currentCharacterAudio){currentCharacterAudio.pause();currentCharacterAudio.currentTime=0;currentCharacterAudio=null;}for(const a of Object.values(selectionSounds))a.pause();clearTimeout(voiceMixTimer);voiceMixToken++;backgroundMusic.volume=.105;fxAudio.crowd.volume=.07;for(const a of coinPlayers)a.pause();for(const a of activeCoinSounds){a.pause();a.currentTime=0;}activeCoinSounds.clear();for(const clip of Object.values(heartVoices))clip.pause();marineBonusSound.pause();
  for(const a of Object.values(fxAudio))a.pause();
  clipMelenchon.pause();
 }
@@ -282,38 +282,20 @@ function playHeartVoice(){
 // Effets sonores sans seek ni allocation répétée pendant le jeu (Safari mobile).
 // Les pièces utilisent Web Audio : chaque collecte déclenche sa propre voix,
 // sans limite de deux lecteurs HTMLAudio sur Safari iOS.
+// Un clone par pièce : aucune limite artificielle de déclenchements simultanés.
 const coinPlayers=[fxAudio.coin];
-let coinBuffer=null,coinDecodeStarted=false;
-function prepareCoinBuffer(){
- if(coinDecodeStarted)return;
- coinDecodeStarted=true;
- try{
-  audioCtx??=new (window.AudioContext||window.webkitAudioContext)();
-  const src=fxAudio.coin.src;
-  const base64=src.slice(src.indexOf(',')+1);
-  const binary=atob(base64),bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-  audioCtx.decodeAudioData(bytes.buffer).then(buffer=>{coinBuffer=buffer;}).catch(()=>{coinDecodeStarted=false;});
- }catch(e){coinDecodeStarted=false;}
-}
+const activeCoinSounds=new Set();
 function playCoin(){
- if(coinBuffer&&audioCtx){
-  try{
-   if(audioCtx.state==='suspended')audioCtx.resume();
-   const source=audioCtx.createBufferSource(),gain=audioCtx.createGain();
-   source.buffer=coinBuffer;gain.gain.value=.23;
-   source.connect(gain);gain.connect(audioCtx.destination);
-   source.start();source.onended=()=>{source.disconnect();gain.disconnect();};
-   return;
-  }catch(e){}
- }
- // Secours si le décodage n'est pas encore terminé.
- prepareCoinBuffer();
- const player=coinPlayers.find(x=>x.paused||x.ended)||new Audio(fxAudio.coin.src);
- if(!coinPlayers.includes(player)){player.preload='auto';coinPlayers.push(player);}
- player.volume=.23;
- try{player.currentTime=0;const promise=player.play();if(promise)promise.catch(()=>{});}catch(e){}
+ const sound=fxAudio.coin.cloneNode(true);
+ sound.volume=.23;
+ sound.muted=false;
+ activeCoinSounds.add(sound);
+ const cleanup=()=>{activeCoinSounds.delete(sound);sound.onended=null;};
+ sound.onended=cleanup;
+ sound.onerror=cleanup;
+ try{const p=sound.play();if(p&&p.catch)p.catch(cleanup);}catch(e){cleanup();}
 }
+function prepareCoinBuffer(){/* Les pièces sont maintenant jouées par clones HTMLAudio. */}
 function playFx(name){
  const a=fxAudio[name];if(!a)return;
  if(name==='coin'){playCoin();return;}
@@ -414,14 +396,21 @@ const selectionSounds={lepen:new Audio('data:audio/mpeg;base64,SUQzBAAAAAACPlRYW
 
 let selectionTimeout;
 for(const sound of Object.values(selectionSounds))sound.volume=.58;
+let currentCharacterAudio=null;
 function playSelection(character){
  clearTimeout(selectionTimeout);
- for(const sound of Object.values(selectionSounds)){sound.pause();sound.currentTime=0;}
+ if(currentCharacterAudio){currentCharacterAudio.pause();currentCharacterAudio.currentTime=0;}
+ // Coupe également les éventuels sons de présentation résiduels.
+ for(const sound of Object.values(selectionSounds)){
+  if(sound!==currentCharacterAudio){sound.pause();sound.currentTime=0;}
+ }
  const a=selectionSounds[character];if(!a)return;
+ currentCharacterAudio=a;
  menuMusic.volume=.10;
- const p=a.play();if(p)p.catch(()=>{});
- const restore=()=>{menuMusic.volume=.21;};
+ a.currentTime=0;
+ const restore=()=>{if(currentCharacterAudio===a){menuMusic.volume=.21;currentCharacterAudio=null;}};
  a.onended=restore;
+ const p=a.play();if(p&&p.catch)p.catch(restore);
  selectionTimeout=setTimeout(restore,6000);
 }
 document.querySelectorAll('.char').forEach(b=>b.onclick=()=>{playSelection(b.dataset.char);document.querySelectorAll('.char').forEach(x=>x.classList.remove('active'));b.classList.add('active');selected=b.dataset.char;makePlayer()});
